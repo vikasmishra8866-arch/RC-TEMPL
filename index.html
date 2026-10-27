@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PDF Card Filler · Exact Coordinate Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+  :root {
+    --bg: #08080d;
+    --panel: rgba(18, 20, 30, 0.75);
+    --panel-2: rgba(28, 30, 44, 0.65);
+    --border: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.15);
+    --text: #e8e8f0;
+    --muted: #7a7a92;
+    --accent: #00e0b8;
+    --accent-2: #7c5cff;
+    --danger: #ef4444;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(124, 92, 255, 0.15), transparent 45%),
+      radial-gradient(circle at 85% 100%, rgba(0, 224, 184, 0.12), transparent 45%);
+    pointer-events: none; z-index: 0;
+  }
+  .app {
+    position: relative;
+    display: grid;
+    grid-template-columns: 320px 1fr 400px;
+    height: 100vh;
+    z-index: 1;
+  }
+
+  /* LEFT PANEL */
+  .left-panel {
+    background: rgba(12, 13, 20, 0.88);
+    backdrop-filter: blur(24px);
+    border-right: 1px solid var(--border);
+    padding: 18px 16px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .left-panel::-webkit-scrollbar { width: 6px; }
+  .left-panel::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .brand-logo {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center;
+    font-weight: 800; font-size: 17px; color: #000;
+    box-shadow: 0 6px 20px rgba(0, 224, 184, 0.28);
+  }
+  .brand h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand p { font-size: 9.5px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+
+  .section { display: flex; flex-direction: column; gap: 8px; }
+  .section-title {
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+
+  .drop-zone {
+    border: 2px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 20px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: rgba(255, 255, 255, 0.015);
+  }
+  .drop-zone:hover, .drop-zone.drag {
+    border-color: var(--accent);
+    background: rgba(0, 224, 184, 0.06);
+  }
+  .drop-zone svg { width: 28px; height: 28px; color: var(--accent); margin-bottom: 8px; }
+  .drop-zone h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .drop-zone p { font-size: 10.5px; color: var(--muted); }
+  .file-info {
+    display: none;
+    font-size: 10.5px;
+    background: rgba(0, 224, 184, 0.08);
+    border: 1px solid rgba(0, 224, 184, 0.25);
+    padding: 7px 9px;
+    border-radius: 7px;
+    color: var(--accent);
+    font-family: var(--mono);
+    word-break: break-all;
+  }
+  .file-info.show { display: block; }
+
+  textarea, input[type="text"], select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+    transition: border 0.15s;
+  }
+  textarea { min-height: 80px; font-family: var(--mono); font-size: 11px; }
+  textarea:focus, input:focus, select:focus { border-color: var(--border-strong); }
+  select { cursor: pointer; }
+  select option { background: #16182a; }
+
+  .row-btns { display: flex; gap: 6px; }
+  .row-btns button {
+    flex: 1;
+    padding: 7px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .row-btns button:hover { border-color: var(--border-strong); background: rgba(40, 44, 60, 0.7); }
+
+  .toggle {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 11.5px;
+    user-select: none;
+    transition: border 0.15s;
+  }
+  .toggle:hover { border-color: var(--border-strong); }
+  .toggle input { display: none; }
+  .toggle .box {
+    width: 13px; height: 13px; border-radius: 3px;
+    border: 1.5px solid var(--border-strong);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .toggle input:checked + .box {
+    background: var(--accent); border-color: var(--accent);
+  }
+  .toggle input:checked + .box::after {
+    content: '';
+    width: 3px; height: 6px;
+    border: solid #000; border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+
+  .btn {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--border-strong); background: rgba(40, 44, 60, 0.7); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn.primary {
+    background: linear-gradient(135deg, var(--accent), #00b393);
+    color: #001a15;
+    border: none;
+    box-shadow: 0 4px 16px rgba(0, 224, 184, 0.28);
+  }
+  .btn.primary:hover:not(:disabled) { box-shadow: 0 6px 22px rgba(0, 224, 184, 0.42); transform: translateY(-1px); }
+
+  /* MAIN PREVIEW */
+  main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+  .toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(12, 13, 20, 0.6);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(16px);
+    font-size: 12px;
+  }
+  .toolbar .spacer { flex: 1; }
+  .tool-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .tool-btn:hover:not(:disabled) { border-color: var(--border-strong); }
+  .tool-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .page-indicator { font-family: var(--mono); color: var(--muted); padding: 0 6px; }
+  .page-indicator b { color: var(--text); }
+
+  .preview-pane {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    margin: 14px;
+    border-radius: 14px;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+    min-height: 0;
+    position: relative;
+  }
+  .preview-pane::-webkit-scrollbar { width: 8px; height: 8px; }
+  .preview-pane::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  .canvas-wrap {
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    height: fit-content;
+  }
+  #pdfCanvas { display: block; border-radius: 4px; }
+  #overlayCanvas { position: absolute; inset: 0; pointer-events: none; }
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; color: var(--muted);
+    width: 100%;
+  }
+  .empty-state svg { width: 50px; height: 50px; opacity: 0.3; }
+  .empty-state h2 { font-size: 14px; color: var(--text); font-weight: 600; }
+  .empty-state p { font-size: 12px; max-width: 340px; text-align: center; line-height: 1.6; }
+
+  /* RIGHT PANEL — FIELDS */
+  .right-panel {
+    background: rgba(12, 13, 20, 0.88);
+    backdrop-filter: blur(24px);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .fields-header {
+    padding: 14px 14px 10px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .fields-header b { font-size: 13px; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: rgba(0, 224, 184, 0.12);
+    color: var(--accent);
+    border: 1px solid rgba(0, 224, 184, 0.25);
+  }
+  .fields-header input {
+    flex-basis: 100%;
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+  .filter-row {
+    display: flex; gap: 4px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-row button {
+    flex: 1;
+    padding: 5px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .filter-row button:hover { color: var(--text); }
+  .filter-row button.active {
+    background: rgba(0, 224, 184, 0.1);
+    color: var(--accent);
+    border-color: rgba(0, 224, 184, 0.25);
+  }
+  .fields-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px 20px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .fields-list::-webkit-scrollbar { width: 6px; }
+  .fields-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+  .field-row {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 10px;
+    transition: border 0.15s;
+    cursor: pointer;
+  }
+  .field-row:hover { border-color: var(--border-strong); }
+  .field-row.highlighted {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(0, 224, 184, 0.3);
+  }
+  .field-row.label-type { background: rgba(124, 92, 255, 0.05); border-color: rgba(124, 92, 255, 0.15); }
+  .field-row.hidden-field { opacity: 0.45; }
+
+  .field-top {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 6px;
+  }
+  .field-eye {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    color: var(--accent);
+    display: grid; place-items: center;
+    width: 16px; height: 16px;
+  }
+  .field-eye svg { width: 13px; height: 13px; }
+  .field-eye.off { color: var(--muted); opacity: 0.5; }
+  .field-label {
+    font-size: 10.5px;
+    color: var(--muted);
+    font-family: var(--mono);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .field-tag {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(124, 92, 255, 0.15);
+    color: #a78bfa;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .field-coords {
+    font-size: 9.5px;
+    font-family: var(--mono);
+    color: #6a6a85;
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+  .field-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    transition: border 0.15s;
+  }
+  .field-input:focus { border-color: var(--accent); background: rgba(0, 224, 184, 0.04); }
+  .field-input::placeholder { color: #4a4a5e; font-style: italic; }
+
+  .no-pdf-msg {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .no-pdf-msg svg { width: 32px; height: 32px; opacity: 0.3; }
+
+  /* Loading */
+  .loading {
+    position: fixed; inset: 0;
+    background: rgba(8, 8, 13, 0.9);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 999;
+  }
+  .loading.show { display: flex; }
+  .loading-card {
+    background: rgba(20, 22, 34, 0.95);
+    border: 1px solid var(--border-strong);
+    padding: 28px 36px;
+    border-radius: 16px;
+    text-align: center;
+    min-width: 280px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    margin: 0 auto 14px;
+    border: 3px solid rgba(0, 224, 184, 0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+  .loading-card p { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: rgba(20, 22, 34, 0.98);
+    border: 1px solid var(--border-strong);
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    transform: translateY(120%);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+    max-width: 340px;
+  }
+  .toast.show { transform: translateY(0); }
+  .toast.ok { border-color: rgba(0, 224, 184, 0.4); color: #5eead4; }
+  .toast.err { border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+
+  @media (max-width: 1200px) {
+    .app { grid-template-columns: 280px 1fr 340px; }
+  }
+  @media (max-width: 1000px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    .left-panel { display: none; }
+    .right-panel { max-height: 45vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- LEFT PANEL -->
+  <aside class="left-panel">
+    <div class="brand">
+      <div class="brand-logo">✎</div>
+      <div>
+        <h1>PDF Card Filler</h1>
+        <p>Exact Coordinate Overlay</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">1 · Blank PDF Template</div>
+      <div class="drop-zone" id="pdfDrop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <h3>Upload blank PDF</h3>
+        <p>Click or drop here</p>
+        <input type="file" id="pdfInput" accept="application/pdf" style="display:none" />
+      </div>
+      <div class="file-info" id="pdfInfo"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">2 · Field Coordinates (JSON)</div>
+      <textarea id="jsonInput" placeholder='Paste JSON here...&#10;{ "pages": [ { "page": 1, "items": [...] } ] }'></textarea>
+      <div class="row-btns">
+        <button id="parseJsonBtn">Parse JSON</button>
+        <button id="clearJsonBtn">Clear</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">3 · Fit & Draw Options</div>
+      <select id="fitMode">
+        <option value="shrink">Shrink font to fit (recommended)</option>
+        <option value="wrap">Wrap to multiple lines</option>
+        <option value="clip">Keep original size (clip)</option>
+        <option value="none">None (draw as-is)</option>
+      </select>
+      <label class="toggle">
+        <input type="checkbox" id="keepLabels" checked>
+        <span class="box"></span>
+        Keep labels from JSON
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="coverOriginal">
+        <span class="box"></span>
+        Cover original text (white-out)
+      </label>
+    </div>
+
+    <div class="section">
+      <div class="section-title">4 · Export</div>
+      <button class="btn primary" id="exportBtn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download filled PDF
+      </button>
+      <button class="btn" id="previewBtn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Preview result in new tab
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN PREVIEW -->
+  <main>
+    <div class="toolbar">
+      <button class="tool-btn" id="prevPage" disabled>◀ Prev</button>
+      <span class="page-indicator" id="pageIndicator"><b>—</b> / —</span>
+      <button class="tool-btn" id="nextPage" disabled>Next ▶</button>
+      <div class="spacer"></div>
+      <button class="tool-btn" id="zoomOut" disabled>−</button>
+      <span class="page-indicator" id="zoomLabel" style="min-width:52px;text-align:center">100%</span>
+      <button class="tool-btn" id="zoomIn" disabled>+</button>
+    </div>
+    <div class="preview-pane" id="previewPane">
+      <div class="empty-state" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <h2>No template loaded</h2>
+        <p>Upload a blank PDF and paste your coordinate JSON. Fields appear here on the right — fill them in and watch the live preview update.</p>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap" style="display:none">
+        <canvas id="pdfCanvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT PANEL — FIELDS -->
+  <aside class="right-panel">
+    <div class="fields-header">
+      <b>Fields</b>
+      <span class="badge" id="fieldCount">0</span>
+      <div style="flex:1"></div>
+      <input type="text" placeholder="Search fields…" id="searchInput" />
+    </div>
+    <div class="filter-row">
+      <button data-filter="all" class="active">All</button>
+      <button data-filter="values">Values</button>
+      <button data-filter="labels">Labels</button>
+      <button data-filter="empty">Empty</button>
+    </div>
+    <div class="fields-list" id="fieldsList">
+      <div class="no-pdf-msg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>Upload a blank PDF and paste your coordinates JSON to see fields.</p>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="loading" id="loading">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <h3 id="loadingTitle">Processing…</h3>
+    <p id="loadingSub"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ SETUP ============ */
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const $ = (id) => document.getElementById(id);
+
+/* ============ STATE ============ */
+const state = {
+  pdfBytes: null,
+  pdfFileName: '',
+  pdfDoc: null,          // pdf.js doc
+  pdfLibDoc: null,       // pdf-lib doc (for measurement)
+  measureFont: null,
+  fields: [],
+  currentPage: 1,
+  zoom: 1.5,
+  fitMode: 'shrink',
+  keepLabels: true,
+  coverOriginal: false,
+  filter: 'all',
+  search: '',
+  highlightId: null
+};
+
+/* ============ INIT MEASURE FONT ============ */
+(async function initMeasureFont() {
+  try {
+    state.pdfLibDoc = await PDFLib.PDFDocument.create();
+    state.measureFont = await state.pdfLibDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+  } catch (e) {
+    console.error('Measure font init failed:', e);
+  }
+})();
+
+/* ============ TOAST ============ */
+let toastTimer = null;
+function toast(msg, type = 'ok') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+/* ============ LOADING ============ */
+function showLoading(title, sub) {
+  $('loadingTitle').textContent = title || 'Processing…';
+  $('loadingSub').textContent = sub || '';
+  $('loading').classList.add('show');
+}
+function hideLoading() { $('loading').classList.remove('show'); }
+
+/* ============ PDF UPLOAD ============ */
+const pdfDrop = $('pdfDrop');
+const pdfInput = $('pdfInput');
+
+pdfDrop.addEventListener('click', () => pdfInput.click());
+pdfDrop.addEventListener('dragover', (e) => {
+  e.preventDefault(); pdfDrop.classList.add('drag');
+});
+pdfDrop.addEventListener('dragleave', () => pdfDrop.classList.remove('drag'));
+pdfDrop.addEventListener('drop', (e) => {
+  e.preventDefault(); pdfDrop.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') loadPdf(f);
+  else toast('PDF file required', 'err');
+});
+pdfInput.addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) loadPdf(f);
+});
+
+async function loadPdf(file) {
+  showLoading('Loading PDF template…', file.name);
+  try {
+    state.pdfBytes = await file.arrayBuffer();
+    state.pdfFileName = file.name.replace(/\.pdf$/i, '');
+    const doc = await pdfjsLib.getDocument({ data: state.pdfBytes.slice(0) }).promise;
+    state.pdfDoc = doc;
+    state.currentPage = 1;
+
+    $('pdfInfo').textContent = `📄 ${file.name} · ${doc.numPages} page${doc.numPages > 1 ? 's' : ''}`;
+    $('pdfInfo').classList.add('show');
+    $('emptyState').style.display = 'none';
+    $('canvasWrap').style.display = 'block';
+    $('exportBtn').disabled = false;
+    $('previewBtn').disabled = false;
+    $('zoomIn').disabled = false;
+    $('zoomOut').disabled = false;
+
+    await renderPage(1);
+    updateToolbar();
+    renderFieldsList();
+    hideLoading();
+    toast(`PDF loaded · ${doc.numPages} page${doc.numPages > 1 ? 's' : ''}`, 'ok');
+  } catch (err) {
+    console.error(err);
+    hideLoading();
+    toast('PDF load failed: ' + err.message, 'err');
+  }
+}
+
+/* ============ JSON PARSE ============ */
+$('parseJsonBtn').addEventListener('click', () => {
+  const txt = $('jsonInput').value.trim();
+  if (!txt) { toast('JSON empty hai', 'err'); return; }
+  try {
+    const json = JSON.parse(txt);
+    if (!json.pages || !Array.isArray(json.pages)) {
+      throw new Error('JSON me "pages" array missing hai');
+    }
+    loadFieldsFromJson(json);
+    toast(`${state.fields.length} fields loaded`, 'ok');
+  } catch (err) {
+    toast('JSON parse error: ' + err.message, 'err');
+  }
+});
+$('clearJsonBtn').addEventListener('click', () => {
+  $('jsonInput').value = '';
+  state.fields = [];
+  renderFieldsList();
+  redrawOverlay();
+});
+
+function loadFieldsFromJson(json) {
+  state.fields = [];
+  let id = 0;
+  for (const p of json.pages) {
+    if (!p.items) continue;
+    for (const it of p.items) {
+      if (!it.text && it.text !== '') continue;
+      const isLabel = /f3|f4/i.test(it.font || '');
+      state.fields.push({
+        id: id++,
+        page: p.page,
+        origText: it.text || '',
+        value: isLabel && state.keepLabels ? (it.text || '') : '',
+        x: +it.x || 0,
+        y: +it.y || 0,
+        w: +it.width || 0,
+        h: +it.height || 0,
+        fontSize: +it.font_size || 10,
+        font: it.font || '',
+        isLabel,
+        visible: true
+      });
+    }
+  }
+  state.currentPage = 1;
+  renderFieldsList();
+  redrawOverlay();
+  if (state.pdfDoc) {
+    updateToolbar();
+  }
+}
+
+/* ============ FIELD LIST ============ */
+const fieldsList = $('fieldsList');
+const searchInput = $('searchInput');
+
+searchInput.addEventListener('input', (e) => {
+  state.search = e.target.value.toLowerCase();
+  renderFieldsList();
+});
+
+document.querySelectorAll('.filter-row button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-row button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filter = btn.dataset.filter;
+    renderFieldsList();
+  });
+});
+
+function renderFieldsList() {
+  $('fieldCount').textContent = state.fields.length;
+
+  if (state.fields.length === 0) {
+    fieldsList.innerHTML = `
+      <div class="no-pdf-msg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>Fields aparecerão aqui after parsing JSON.</p>
+      </div>`;
+    return;
+  }
+
+  let filtered = state.fields.filter(f => {
+    if (state.filter === 'values' && f.isLabel) return false;
+    if (state.filter === 'labels' && !f.isLabel) return false;
+    if (state.filter === 'empty' && f.value.trim() !== '') return false;
+    if (state.search) {
+      const q = state.search;
+      const hay = (f.origText + ' ' + f.value + ' ' + f.font).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Only show current page's fields by default? Show all, but sort by page
+  filtered.sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
+
+  const frag = document.createDocumentFragment();
+  let lastPage = null;
+
+  for (const f of filtered) {
+    if (f.page !== lastPage) {
+      lastPage = f.page;
+      const divider = document.createElement('div');
+      divider.style.cssText = 'font-size:10px;color:#5a5a70;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-top:10px;';
+      divider.textContent = `Page ${f.page}`;
+      frag.appendChild(divider);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'field-row'
+      + (f.isLabel ? ' label-type' : '')
+      + (state.highlightId === f.id ? ' highlighted' : '')
+      + (!f.visible ? ' hidden-field' : '');
+    row.dataset.id = f.id;
+
+    const coords = `x:${f.x.toFixed(1)} · y:${f.y.toFixed(1)} · ${f.w.toFixed(1)}×${f.h.toFixed(1)} · ${f.fontSize.toFixed(1)}pt`;
+
+    const valEscaped = escapeAttr(f.value);
+    const origEscaped = escapeAttr(f.origText);
+
+    row.innerHTML = `
+      <div class="field-top">
+        <button class="field-eye ${f.visible ? '' : 'off'}" title="Toggle visibility">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${f.visible
+              ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+              : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'}
+          </svg>
+        </button>
+        <span class="field-label" title="${origEscaped}">${f.origText || '(empty)'}</span>
+        ${f.isLabel ? '<span class="field-tag">label</span>' : ''}
+      </div>
+      <input type="text" class="field-input" value="${valEscaped}" placeholder="${origEscaped}" data-id="${f.id}" />
+      <div class="field-coords">${coords}</div>
+    `;
+
+    frag.appendChild(row);
+  }
+
+  fieldsList.innerHTML = '';
+  fieldsList.appendChild(frag);
+
+  // Wire up inputs
+  fieldsList.querySelectorAll('.field-input').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const id = +e.target.dataset.id;
+      const f = state.fields.find(x => x.id === id);
+      if (!f) return;
+      f.value = e.target.value;
+      redrawOverlay();
+    });
+    inp.addEventListener('focus', (e) => {
+      const id = +e.target.dataset.id;
+      state.highlightId = id;
+      updateHighlight();
+      redrawOverlay();
+    });
+  });
+
+  // Wire up eye buttons
+  fieldsList.querySelectorAll('.field-eye').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = btn.closest('.field-row');
+      const id = +row.dataset.id;
+      const f = state.fields.find(x => x.id === id);
+      if (!f) return;
+      f.visible = !f.visible;
+      row.classList.toggle('hidden-field', !f.visible);
+      btn.classList.toggle('off', !f.visible);
+      redrawOverlay();
+    });
+  });
+
+  // Wire up row click for highlight
+  fieldsList.querySelectorAll('.field-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('input, button')) return;
+      const id = +row.dataset.id;
+      state.highlightId = id;
+      updateHighlight();
+      redrawOverlay();
+    });
+  });
+}
+
+function updateHighlight() {
+  fieldsList.querySelectorAll('.field-row').forEach(r => {
+    r.classList.toggle('highlighted', +r.dataset.id === state.highlightId);
+  });
+}
+
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/* ============ RENDER PAGE ============ */
+const pdfCanvas = $('pdfCanvas');
+const overlayCanvas = $('overlayCanvas');
+const canvasWrap = $('canvasWrap');
+
+async function renderPage(pageNum) {
+  if (!state.pdfDoc) return;
+  const page = await state.pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: state.zoom });
+
+  pdfCanvas.width = Math.floor(viewport.width);
+  pdfCanvas.height = Math.floor(viewport.height);
+  await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport }).promise;
+
+  overlayCanvas.width = pdfCanvas.width;
+  overlayCanvas.height = pdfCanvas.height;
+
+  canvasWrap.style.display = 'block';
+  redrawOverlay();
+  updateToolbar();
+}
+
+function redrawOverlay() {
+  const ctx = overlayCanvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  const s = state.zoom;
+
+  for (const f of state.fields) {
+    if (f.page !== state.currentPage) continue;
+    if (!f.visible) continue;
+    if (!f.value) continue;
+
+    const { lines, size } = layoutField(f);
+    const lineH = size * 1.22;
+
+    // Cover original
+    if (state.coverOriginal) {
+      ctx.fillStyle = '#ffffff';
+      const coverH = Math.max(f.h, lines.length * lineH);
+      ctx.fillRect(f.x * s - 0.5, f.y * s - 0.5, f.w * s + 1, coverH * s + 1);
+    }
+
+    // Draw text
+    ctx.fillStyle = '#111111';
+    ctx.textBaseline = 'top';
+    ctx.font = `${size * s}px Helvetica, Arial, sans-serif`;
+
+    lines.forEach((line, i) => {
+      ctx.fillText(line, f.x * s, f.y * s + i * lineH * s);
+    });
+
+    // Highlight box
+    if (state.highlightId === f.id) {
+      ctx.strokeStyle = 'rgba(0, 224, 184, 0.9)';
+      ctx.lineWidth = 1.6;
+      const boxH = lines.length * lineH;
+      ctx.strokeRect(f.x * s - 2, f.y * s - 2, f.w * s + 4, Math.max(f.h, boxH) * s + 4);
+    }
+  }
+}
+
+/* ============ LAYOUT / FIT ============ */
+function measureWidth(text, size) {
+  if (!state.measureFont) return text.length * size * 0.5;
+  try {
+    return state.measureFont.widthOfTextAtSize(text, size);
+  } catch {
+    return text.length * size * 0.5;
+  }
+}
+
+function layoutField(f) {
+  const val = (f.value || '').replace(/\r\n|\r/g, '\n');
+  if (!val) return { lines: [], size: f.fontSize };
+
+  const mode = state.fitMode;
+  const maxW = f.w || 1000;
+  let size = f.fontSize || 10;
+
+  if (mode === 'none' || mode === 'clip') {
+    return { lines: val.split('\n'), size };
+  }
+
+  // Check if fits
+  const singleLine = val.replace(/\n/g, ' ');
+  const width = measureWidth(singleLine, size);
+
+  if (width <= maxW) {
+    return { lines: val.split('\n'), size };
+  }
+
+  if (mode === 'shrink') {
+    let newSize = size * (maxW / width);
+    newSize = Math.max(newSize, size * 0.45);
+    // Re-measure after rounding
+    if (measureWidth(singleLine, newSize) <= maxW) {
+      return { lines: val.split('\n'), size: newSize };
+    }
+    // Still too wide - fall through to wrap
+    return wrapText(val, maxW, size);
+  }
+
+  if (mode === 'wrap') {
+    return wrapText(val, maxW, size);
+  }
+
+  return { lines: val.split('\n'), size };
+}
+
+function wrapText(text, maxW, size) {
+  const paragraphs = text.split('\n');
+  const allLines = [];
+  for (const para of paragraphs) {
+    if (!para) { allLines.push(''); continue; }
+    const words = para.split(/\s+/);
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (!cur || measureWidth(test, size) <= maxW) {
+        cur = test;
+      } else {
+        allLines.push(cur);
+        cur = w;
+      }
+    }
+    if (cur) allLines.push(cur);
+  }
+  return { lines: allLines, size };
+}
+
+/* ============ TOOLBAR ============ */
+function updateToolbar() {
+  const total = state.pdfDoc ? state.pdfDoc.numPages : 0;
+  $('pageIndicator').innerHTML = `<b>${state.currentPage}</b> / ${total || '—'}`;
+  $('zoomLabel').textContent = Math.round(state.zoom / 1.5 * 100) + '%';
+  $('prevPage').disabled = state.currentPage <= 1;
+  $('nextPage').disabled = !state.pdfDoc || state.currentPage >= total;
+}
+
+$('prevPage').addEventListener('click', () => {
+  if (state.currentPage > 1) {
+    state.currentPage--;
+    renderPage(state.currentPage);
+  }
+});
+$('nextPage').addEventListener('click', () => {
+  if (state.pdfDoc && state.currentPage < state.pdfDoc.numPages) {
+    state.currentPage++;
+    renderPage(state.currentPage);
+  }
+});
+$('zoomIn').addEventListener('click', () => {
+  state.zoom = Math.min(state.zoom + 0.25, 4);
+  if (state.pdfDoc) renderPage(state.currentPage);
+});
+$('zoomOut').addEventListener('click', () => {
+  state.zoom = Math.max(state.zoom - 0.25, 0.5);
+  if (state.pdfDoc) renderPage(state.currentPage);
+});
+
+/* ============ SETTINGS ============ */
+$('fitMode').addEventListener('change', (e) => {
+  state.fitMode = e.target.value;
+  redrawOverlay();
+});
+$('keepLabels').addEventListener('change', (e) => {
+  state.keepLabels = e.target.checked;
+  // Update label fields' values
+  for (const f of state.fields) {
+    if (f.isLabel) {
+      f.value = e.target.checked ? f.origText : '';
+    }
+  }
+  renderFieldsList();
+  redrawOverlay();
+});
+$('coverOriginal').addEventListener('change', (e) => {
+  state.coverOriginal = e.target.checked;
+  redrawOverlay();
+});
+
+/* ============ EXPORT PDF ============ */
+$('exportBtn').addEventListener('click', () => exportFilledPdf(false));
+$('previewBtn').addEventListener('click', () => exportFilledPdf(true));
+
+async function exportFilledPdf(openInTab) {
+  if (!state.pdfBytes) { toast('PDF not loaded', 'err'); return; }
+  showLoading('Generating PDF…', 'Embedding text at exact coordinates');
+  try {
+    const doc = await PDFLib.PDFDocument.load(state.pdfBytes);
+    const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const pages = doc.getPages();
+
+    let drawn = 0;
+    for (const f of state.fields) {
+      if (!f.visible || !f.value) continue;
+      const pIdx = f.page - 1;
+      if (pIdx < 0 || pIdx >= pages.length) continue;
+
+      const page = pages[pIdx];
+      const pageH = page.getHeight();
+      const { lines, size } = layoutField(f);
+      const lineH = size * 1.22;
+      const ascent = font.ascentAtSize(size);
+
+      // White-out original text
+      if (state.coverOriginal) {
+        const coverH = Math.max(f.h, lines.length * lineH);
+        page.drawRectangle({
+          x: f.x - 0.5,
+          y: pageH - f.y - coverH - 0.5,
+          width: f.w + 1,
+          height: coverH + 1,
+          color: PDFLib.rgb(1, 1, 1)
+        });
+      }
+
+      lines.forEach((line, i) => {
+        if (!line) return;
+        const drawX = f.x;
+        const drawY = pageH - f.y - ascent - (i * lineH);
+        try {
+          page.drawText(line, {
+            x: drawX,
+            y: drawY,
+            size,
+            font,
+            color: PDFLib.rgb(0, 0, 0)
+          });
+          drawn++;
+        } catch (e) {
+          console.warn('Skip draw:', line, e);
+        }
+      });
+    }
+
+    const out = await doc.save();
+    const blob = new Blob([out], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+
+    if (openInTab) {
+      window.open(url, '_blank');
+      toast(`Preview: ${drawn} text runs drawn`, 'ok');
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `filled-${state.pdfFileName || 'card'}.pdf`;
+      a.click();
+      toast(`Downloaded · ${drawn} text runs`, 'ok');
+    }
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    hideLoading();
+  } catch (err) {
+    console.error(err);
+    hideLoading();
+    toast('Export failed: ' + err.message, 'err');
+  }
+}
+
+/* ============ INIT ============ */
+updateToolbar();
+</script>
+</body>
+</html>
